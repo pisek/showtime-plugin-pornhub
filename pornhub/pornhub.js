@@ -23,7 +23,10 @@
     var PREFIX = 'pornhub';
     var logo = plugin.path + "logo.png";
     
-    var DEFAULT_URL = 'http://www.cda.pl/video/';
+    var DEFAULT_URL = 'http://www.pornhub.com/video';
+    var MOVIE_PAGE_URL = 'http://www.pornhub.com/view_video.php?viewkey=';
+    var DEFAULT_IMAGE_NO = '4';
+    var MAX_MOVIES_PER_PAGE = 28;
     
     function setPageHeader(page, title) {
         if (page.metadata) {
@@ -33,6 +36,38 @@
     }
     
 	var service = plugin.createService(plugin.getDescriptor().id, PREFIX + ":start", "video", true, logo);
+	
+    var settings = plugin.createSettings(plugin.getDescriptor().id, logo, plugin.getDescriptor().synopsis);
+
+    settings.createMultiOpt('sorting', "Sort by", [
+	        ['', 'Featured recently', true],
+	        ['o=mv', 'Most Viewed'],
+	        ['o=tr', 'Top Rated'],
+	        ['o=ht', 'Hottest'],
+	        ['o=lg', 'Longest'],
+	        ['o=cm', 'Newest']
+        ],
+        function(v) {
+            service.sorting = v;
+    	}
+    );
+    
+    settings.createMultiOpt('period', "Period (applicable only to Most Viewed and Top Rated):", [
+		    ['t=t', 'Daily'],
+	        ['', 'Weekly', true],
+	        ['t=m', 'Monthly'],
+	        ['t=a', 'All Time']
+        ],
+        function(v) {
+            service.period = v;
+       	}
+    );
+    
+    settings.createString('from', 'Hottest from (input your country code like "us" or "pl" etc.):', 'pl',
+    	function(v) {
+            service.from = v;
+        }
+    );
 
 	function d(c) {
 		print(JSON.stringify(c, null, 4));
@@ -43,20 +78,10 @@
         var pageNumber = 1;
         page.entries = 0;
 
-        //1 - desc, 2 - id, 3 - img, 4 - name
-        var patternVideo = /<label  title="([\s\S]*?)">\s*<div class="videoElem">\s*<a class="aBoxVideoElement" .* href="\/video\/(\d\w+)".*>\s*<img.*src="(.*?)".*>[\s\S]*?<a.*alt="(.*?)">/igm;
+        // 1 - viewkey; 2 - title; 3 - duration; 4 - views; 5 - img; 6 - votes; 7 - added
+        var pattern = /<a href="\/view_video\.php\?viewkey=([\s\S]*?)" title="([\s\S]*?)"[\s\S]*?"duration">([\s\S]*?)<\/[\s\S]*?<[\s\S]*?"views"><var>([\s\S]*?)<\/var>[\s\S]*?data-path="([\s\S]*?\{index\}[\s\S]*?)"[\s\S]*?rating-container[\s\S]*?(\d+%)[\s\S]*?<[\s\S]*?"added">([\s\S]*?)<\/[\s\S]*?>/igm;
         
-        //1 - desc, 2 - id, 3 - img, 4 - name
-        var patternSearch = /<label  title="([\s\S]*?)">[\s\S]*?<a.*href="\/video\/(\d\w+)".*>[\s\S]*?<img.*src="(.*?)".*\s*alt="(.*?)">/igm;
-        
-        var pattern;
-        if (search == null) {
-        	pattern = patternVideo;
-        } else {
-        	pattern = patternSearch;
-        }
-        
-        var pagePattern = /<span class="disabledPage">(\d+)<\/span> <span class="disabled">&gt;<\/span>/igm;
+        var pagePattern = /"page_next"[\s\S]+?"\/video\?page=(\d+?)"/igm;
         
         function loader() {
         	
@@ -68,22 +93,37 @@
         	
         	page.loading = true;
         
-        	var url;
-        	if (search == null) {
-        		url = DEFAULT_URL + 'p' + pageNumber;
-        	} else {
-        		url = DEFAULT_URL + 'show/' + search.replace(/\s/g, '_') + '/p' + pageNumber;
-        	}
+       		var url = DEFAULT_URL + '?';
+       		
+       		if (service.sorting) {
+       			url += service.sorting;
+       		
+	       		if (service.sorting == 'o=mv' || service.sorting == 'o=tr') {
+	       			url += '&' + service.period;
+	       		} else if (service.sorting == 'o=ht') {
+	       			url += '&cc=' + service.from;
+	       		}
+       		
+       		}
+       		
+       		if (!search) {
+       			if (url.charAt(url.length-1) != '?') {
+       				url += '&';
+       			}
+       		    url += 'page=' + pageNumber;
+       		}
         	
         	d(url);
 	        var c = showtime.httpReq(url);
 	        
 	        while ((match = pattern.exec(c)) !== null) {
 	
-				page.appendItem(PREFIX + ":movie:" + match[2], 'video', {
-							title : new showtime.RichText(match[4]),
-							icon : new showtime.RichText(match[3]),
-							description : new showtime.RichText(match[1])
+				page.appendItem(PREFIX + ":movie:" + match[1], 'video', {
+							title : new showtime.RichText(match[2]),
+							icon : new showtime.RichText(match[5].replace('{index}', DEFAULT_IMAGE_NO)),
+							duration : match[3],
+							playcount : match[4],
+							description : new showtime.RichText(match[2])
 						});
 				page.entries++; // for searcher to work
 	
@@ -92,7 +132,7 @@
 			page.loading = false;
 			if (pageNumber == 1 && page.metadata) {	//only for first page - search results
                page.metadata.title += ' (' + page.entries;
-               if (page.entries == 24) {
+               if (page.entries == MAX_MOVIES_PER_PAGE) {
 	               page.metadata.title += '+';
                }
                page.metadata.title += ')';
@@ -101,8 +141,8 @@
 			pageNumber++;
 			match = pagePattern.exec(c);
 			d(match);
-			moreSearchPages = (match == null);
-			return match == null;
+			moreSearchPages = (match != null);
+			return match != null;
         }
 		
         //for search to work
@@ -127,27 +167,19 @@
     	page.type = "directory";
         page.contents = "items";
         
-        d(DEFAULT_URL + id);
-        var c = showtime.httpReq(DEFAULT_URL + id);
+        d(MOVIE_PAGE_URL + id);
+        var c = showtime.httpReq(MOVIE_PAGE_URL + id);
         
         // 1 - type, 2 - description, 3 - title, 4 - imageurl, 5 - duration, 6 - negative-rating
-        var pattern = /<meta property="og:type" content="(.*?)".*>[\s\S]*<meta property="og:description" content="([\s\S]+?)".*>\s*<meta property="og:title" content="(.+?)".*>\s*<meta property="og:image" content="(.+?)".*>[\s\S]*config: \{\s*duration: "([\d:]+)",[\s\S]*<span class="bialeSred"><span class="szareSred" style="width:(\d*?)px"><\/span><\/span>/igm;
+        var pattern = /var flashvars.*? = (\{[\s\S]+?\});/igm;
+        var flashvars;
         if ((match = pattern.exec(c)) !== null) {
-        	d(match[1]);
-        	d(match[2]);
-        	d(match[3]);
-        	d(match[4]);
-        	d(match[5]);
-        	d(match[6]);
-        	var type = match[1];
-        	var desc = match[2];
-        	var title = match[3];
-        	var image = match[4];
-        	var duration = match[5];
-        	var rating = (80-match[6])/80*100;
         	
-        	page.metadata.title = title;
-        	page.metadata.background = image;
+        	flashvars = JSON.parse(match[1]);
+        	d(flashvars);
+        	
+        	page.metadata.title = flashvars.video_title;
+        	page.metadata.background = flashvars.image_url;
         	page.metadata.backgroundAlpha = 0.3;
         }
         
@@ -155,56 +187,21 @@
             	title: "Quality"
         });
         
-        // 1 - link url, 2 - quality
-        var pattern = /<a.*?href="\/video\/(\d\w+\?wersja=(\d\w+))".*?>/igm;
+        // 1 - quality, 2 - link
+        var pattern = /var player_quality_([\s\S]*?) = '([\s\S]*?)';/igm;
         var addedQuality = false;
         while ((match = pattern.exec(c)) !== null) {
         	d(match);
-        	page.appendItem(PREFIX + ":video:" + match[1], 'video', {
-						title : new showtime.RichText(match[2]),
-						icon : image,
-						genre: type,
-						rating: rating,
-						duration: duration,
-						description : new showtime.RichText(desc)
+        	page.appendItem(match[2], 'video', {
+						title : new showtime.RichText(match[1]),
+						icon : flashvars.image_url,
+						duration: flashvars.video_duration,
+						description : new showtime.RichText(flashvars.video_title)
 					});
 			addedQuality = true;
         }
-        
-        //if there are no quality versions, add a default one
-        if (!addedQuality) {
-        	page.appendItem(PREFIX + ":video:" + id, 'video', {
-						title : new showtime.RichText("Default quality"),
-						icon : image,
-						genre: type,
-						rating: rating,
-						duration: duration,
-						description : new showtime.RichText(desc)
-					});
-        }
-        
+                
         page.loading = false;
-    });
-    
-    plugin.addURI(PREFIX + ":video:(.*)", function(page, id) {
-    	page.loading = true;
-
-        var c = showtime.httpReq(DEFAULT_URL + id);
-        d(c.headers);
-        
-        var pattern = /if \(checkFlash\(\)\)\{\s*l='(.*)';\s*jwplayer/igm;
-        if ((match = pattern.exec(c)) !== null) {
-        	/*c = showtime.httpReq(match[1]);
-        	d(c.headers);*/
-        	d(match[1]);
-        	page.source = match[1];
-        } else {
-        	//youtube movie (or other)
-        	d('cannot open movie other than cda');
-			page.redirect(PREFIX + ":start");        	
-        }
-        page.loading = false;
-        page.type = "video";
     });
     
 	plugin.addSearcher(plugin.getDescriptor().id, logo, function(page, search) {
