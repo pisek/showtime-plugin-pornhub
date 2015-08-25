@@ -24,9 +24,10 @@
     var logo = plugin.path + "logo.png";
     
     var DEFAULT_URL = 'http://www.pornhub.com/video';
+    var DEFAULT_CATEGORY_URL = 'http://www.pornhub.com/categories';
+    var DEFAULT_SEARCH_URL = 'http://www.pornhub.com/video/search?search=';
     var MOVIE_PAGE_URL = 'http://www.pornhub.com/view_video.php?viewkey=';
-    var DEFAULT_IMAGE_NO = '4';
-    var MAX_MOVIES_PER_PAGE = 28;
+    var MAX_MOVIES_PER_PAGE = 20;
     
     function setPageHeader(page, title) {
         if (page.metadata) {
@@ -40,7 +41,7 @@
     var settings = plugin.createSettings(plugin.getDescriptor().id, logo, plugin.getDescriptor().synopsis);
 
     settings.createMultiOpt('sorting', "Sort by", [
-	        ['', 'Featured recently', true],
+	        [0, 'Featured recently', true],
 	        ['o=mv', 'Most Viewed'],
 	        ['o=tr', 'Top Rated'],
 	        ['o=ht', 'Hottest'],
@@ -54,7 +55,7 @@
     
     settings.createMultiOpt('period', "Period (applicable only to Most Viewed and Top Rated):", [
 		    ['t=t', 'Daily'],
-	        ['', 'Weekly', true],
+	        [0, 'Weekly', true],
 	        ['t=m', 'Monthly'],
 	        ['t=a', 'All Time']
         ],
@@ -73,56 +74,76 @@
 		print(JSON.stringify(c, null, 4));
 	}
 	
-    function browseItems(page, search) {
-		var moreSearchPages = true;    	
+	function resolveUrl(pageNumber, searchUrl) {
+		
+		var url = DEFAULT_URL + '?';
+    	if (searchUrl) {
+    		url = searchUrl;
+    	}
+    	
+   		if (service.sorting != 0) {
+   			if (url.charAt(url.length-1) != '?') {
+   				url += '&';
+   			}
+   			url += service.sorting;
+   		
+       		if (service.sorting == 'o=mv' || service.sorting == 'o=tr') {
+       			if (service.period != 0) {
+       				url += '&' + service.period;
+       			}
+       		} else if (service.sorting == 'o=ht') {
+       			url += '&cc=' + service.from;
+       		}
+   		
+   		}
+   		
+   		if (pageNumber != 1) {
+   			if (url.charAt(url.length-1) != '?') {
+   				url += '&';
+   			}
+   		    url += 'page=' + pageNumber;
+   		}
+   		
+   		return url;
+		
+	}
+	
+    function browseItems(page, searchUrl) {
+		var morePages = true;    	
         var pageNumber = 1;
         page.entries = 0;
 
-        // 1 - viewkey; 2 - title; 3 - duration; 4 - views; 5 - img; 6 - votes; 7 - added
-        var pattern = /<a href="\/view_video\.php\?viewkey=([\s\S]*?)" title="([\s\S]*?)"[\s\S]*?"duration">([\s\S]*?)<\/[\s\S]*?<[\s\S]*?"views"><var>([\s\S]*?)<\/var>[\s\S]*?data-path="([\s\S]*?\{index\}[\s\S]*?)"[\s\S]*?rating-container[\s\S]*?(\d+%)[\s\S]*?<[\s\S]*?"added">([\s\S]*?)<\/[\s\S]*?>/igm;
+        // 1 - viewkey; 2 - title; 3 - duration; 4 - img; 5 - views; 6 - votes; 7 - added
+        var pattern = /<a href="\/view_video\.php\?viewkey=(\d*?)" title="([\s\S]*?)"[\s\S]*?"duration">([\s\S]*?)<\/[\s\S]*?data-mediumthumb="([\s\S]*?)"[\s\S]*?<[\s\S]*?"views"><var>([\s\S]*?)<\/var>[\s\S]*?rating-container[\s\S]*?(\d+)%[\s\S]*?<[\s\S]*?"added">([\s\S]*?)<\/[\s\S]*?>/igm;
         
-        var pagePattern = /"page_next"[\s\S]+?"\/video\?page=(\d+?)"/igm;
+        var pagePattern = /"page_next"[\s\S]+?\/video[\s\S]*?page=(\d*)/igm;
         
         function loader() {
         	
         	//for the purpose of search - loader in search and in showing search values are different instances (!?)
         	//therefore we have to check this flag as well
-        	if (search != null && !moreSearchPages) {
+        	if (url != null && !morePages) {
         		return false;
         	}
         	
         	page.loading = true;
-        
-       		var url = DEFAULT_URL + '?';
-       		
-       		if (service.sorting) {
-       			url += service.sorting;
-       		
-	       		if (service.sorting == 'o=mv' || service.sorting == 'o=tr') {
-	       			url += '&' + service.period;
-	       		} else if (service.sorting == 'o=ht') {
-	       			url += '&cc=' + service.from;
-	       		}
-       		
-       		}
-       		
-       		if (!search) {
-       			if (url.charAt(url.length-1) != '?') {
-       				url += '&';
-       			}
-       		    url += 'page=' + pageNumber;
-       		}
         	
+        	var url = resolveUrl(pageNumber, searchUrl);
+
         	d(url);
 	        var c = showtime.httpReq(url);
 	        
 	        while ((match = pattern.exec(c)) !== null) {
+	        	
+	        	//d(match);
 	
 				page.appendItem(PREFIX + ":movie:" + match[1], 'video', {
 							title : new showtime.RichText(match[2]),
-							icon : new showtime.RichText(match[5].replace('{index}', DEFAULT_IMAGE_NO)),
+							icon : new showtime.RichText(match[4]),
 							duration : match[3],
-							playcount : match[4],
+							playcount : match[5],
+							rating: match[6]*1,
+							timestamp: match[7],
 							description : new showtime.RichText(match[2])
 						});
 				page.entries++; // for searcher to work
@@ -139,10 +160,23 @@
             }
 			
 			pageNumber++;
-			match = pagePattern.exec(c);
+			
+			
+			
+			//TODO pagination!
+			/*match = pagePattern.exec(c);
 			d(match);
-			moreSearchPages = (match != null);
-			return match != null;
+			if (match == null) {	//TODO no idea why it just cannot use pagePattern...
+				var t = /href="\/video\?page=\d*">\d*<\/a><\/li>([\s\S]+?)<\/ul>/img;
+				var m = t.exec(c);
+				match = pagePattern.exec(m[1]);
+				d(match);
+			};
+			morePages = (match != null);
+			return match != null;*/
+			
+			
+			return true;
         }
 		
         //for search to work
@@ -156,10 +190,59 @@
         page.type = "directory";
         page.contents = "items";
         
+        page.appendItem(PREFIX + ":categories", "directory", {
+            title: 'Categories'
+        });
         page.appendItem("", "separator", {
             title: 'Newest'
         });
         browseItems(page);
+    });
+    
+    plugin.addURI(PREFIX + ":categories", function(page, c) {
+    	setPageHeader(page, plugin.getDescriptor().synopsis);
+    	page.type = "directory";
+        page.contents = "items";
+    	
+    	page.loading = true;
+    	// 1 - categoryId; 2 - title
+    	var pattern = /\/video\?c=(\w+?)">([A-Za-z]*?)<\/a/igm;
+    	var c = showtime.httpReq(DEFAULT_CATEGORY_URL);
+    	while ((match = pattern.exec(c)) !== null) {
+    		//d(match);
+            page.appendItem(PREFIX + ":categories:" + match[1], "directory", {
+                title: match[2]
+            });
+    	}
+    	page.loading = false;
+    	
+    });
+    
+    plugin.addURI(PREFIX + ":categories:(.*)", function(page, c) {
+    	setPageHeader(page, plugin.getDescriptor().synopsis);
+    	page.type = "directory";
+        page.contents = "items";
+
+        page.appendItem(PREFIX + ":categories:" + c + ":professional", "directory", {
+            title: 'Professional'
+        });
+        page.appendItem(PREFIX + ":categories:" + c + ":homemade", "directory", {
+            title: 'Homemade'
+        });
+        page.appendItem("", "separator", {
+            title: 'All'
+        });
+   		browseItems(page, DEFAULT_URL + '?c=' + c);
+    	
+    });
+
+    plugin.addURI(PREFIX + ":categories:(.*):(.*)", function(page, c, p) {
+    	setPageHeader(page, plugin.getDescriptor().synopsis);
+    	page.type = "directory";
+        page.contents = "items";
+
+   		browseItems(page, DEFAULT_URL + '?c=' + c + '&p=' + p);
+    	
     });
     
     plugin.addURI(PREFIX + ":movie:(.*)", function(page, id) {
@@ -205,7 +288,7 @@
     });
     
 	plugin.addSearcher(plugin.getDescriptor().id, logo, function(page, search) {
-        browseItems(page, search);
+        browseItems(page, DEFAULT_SEARCH_URL + search.replace(" ", "+"));
     });
 
 })(this);
