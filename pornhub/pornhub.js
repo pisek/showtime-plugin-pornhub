@@ -188,7 +188,7 @@
     plugin.addURI(PREFIX + ":start", function(page) {
         setPageHeader(page, plugin.getDescriptor().synopsis);
         page.type = "directory";
-        page.contents = "items";
+        page.contents = "movies";
         
         page.appendItem(PREFIX + ":categories", "directory", {
             title: 'Categories'
@@ -202,7 +202,7 @@
     plugin.addURI(PREFIX + ":categories", function(page, c) {
     	setPageHeader(page, plugin.getDescriptor().synopsis);
     	page.type = "directory";
-        page.contents = "items";
+        page.contents = "movies";
     	
     	page.loading = true;
     	// 1 - categoryId; 2 - title
@@ -221,7 +221,7 @@
     plugin.addURI(PREFIX + ":categories:(.*)", function(page, c) {
     	setPageHeader(page, plugin.getDescriptor().synopsis);
     	page.type = "directory";
-        page.contents = "items";
+        page.contents = "movies";
 
         page.appendItem(PREFIX + ":categories:" + c + ":professional", "directory", {
             title: 'Professional'
@@ -239,7 +239,7 @@
     plugin.addURI(PREFIX + ":categories:(.*):(.*)", function(page, c, p) {
     	setPageHeader(page, plugin.getDescriptor().synopsis);
     	page.type = "directory";
-        page.contents = "items";
+        page.contents = "movies";
 
    		browseItems(page, DEFAULT_URL + '?c=' + c + '&p=' + p);
     	
@@ -248,7 +248,7 @@
     plugin.addURI(PREFIX + ":movie:(.*)", function(page, id) {
     	page.loading = true;
     	page.type = "directory";
-        page.contents = "items";
+        page.contents = "movies";
         
         d(MOVIE_PAGE_URL + id);
         var c = showtime.httpReq(MOVIE_PAGE_URL + id);
