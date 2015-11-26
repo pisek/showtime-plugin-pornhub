@@ -44,9 +44,9 @@
         }
     }
     
-	var service = plugin.createService(plugin.getDescriptor().id, PREFIX + ":start", "video", true, LOGO);
+	var service = plugin.createService(plugin.getDescriptor().title, PREFIX + ":start", "video", true, LOGO);
 	
-    var settings = plugin.createSettings(plugin.getDescriptor().id, LOGO, plugin.getDescriptor().synopsis);
+    var settings = plugin.createSettings(plugin.getDescriptor().title, LOGO, plugin.getDescriptor().synopsis);
 
     settings.createMultiOpt('sorting', "Sort by", [
 	        [0, 'Featured recently', true],
