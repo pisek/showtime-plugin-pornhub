@@ -385,8 +385,10 @@
 			    }
 	        }
         } else {
-	        page.error("Selected video has no quality versions...");
-	        return;
+	        if (!addedQuality) {
+				page.error("Selected video has no quality versions...");
+				return;
+	        }
         }
         
         
