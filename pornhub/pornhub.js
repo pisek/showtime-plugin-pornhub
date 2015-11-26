@@ -21,24 +21,32 @@
 
 (function(plugin) {
     var PREFIX = 'pornhub';
-    var logo = plugin.path + "logo.png";
+    var LOGO = plugin.path + "logo.png";
+    var BACKGROUND = plugin.path + "views/img/background.jpg";
     
     var DEFAULT_URL = 'http://www.pornhub.com/video';
     var DEFAULT_CATEGORY_URL = 'http://www.pornhub.com/categories';
     var DEFAULT_SEARCH_URL = 'http://www.pornhub.com/video/search?search=';
     var MOVIE_PAGE_URL = 'http://www.pornhub.com/view_video.php?viewkey=';
-    var MAX_MOVIES_PER_PAGE = 20;
+    var MAX_MOVIES_PER_PAGE = 28;
     
-    function setPageHeader(page, title) {
+    function setPageHeader(page, title, image) {
         if (page.metadata) {
             page.metadata.title = title;
-            page.metadata.logo = logo;
+            page.metadata.logo = LOGO;
+            if (image) {
+            	page.metadata.background = image;
+            	page.metadata.backgroundAlpha = 0.3;
+            } else {
+            	page.metadata.background = BACKGROUND;
+            	page.metadata.backgroundAlpha = 0.7;
+            }
         }
     }
     
-	var service = plugin.createService(plugin.getDescriptor().id, PREFIX + ":start", "video", true, logo);
+	var service = plugin.createService(plugin.getDescriptor().id, PREFIX + ":start", "video", true, LOGO);
 	
-    var settings = plugin.createSettings(plugin.getDescriptor().id, logo, plugin.getDescriptor().synopsis);
+    var settings = plugin.createSettings(plugin.getDescriptor().id, LOGO, plugin.getDescriptor().synopsis);
 
     settings.createMultiOpt('sorting', "Sort by", [
 	        [0, 'Featured recently', true],
@@ -68,6 +76,18 @@
     	function(v) {
             service.from = v;
         }
+    );
+    
+	settings.createMultiOpt('quality', "Video quality (if not found - closest will be selected)", [
+        ['letMeChoose', 'Let me choose', true],
+        ['1080', '1080p'],
+        ['720', '720p'],
+        ['480', '480p'],
+        ['360', '360p'],
+        ['240', '240p']
+        ], function(v) {
+            service.quality = v;
+    	}
     );
 
 	function d(c) {
@@ -114,7 +134,7 @@
         page.entries = 0;
 
         // 1 - viewkey; 2 - title; 3 - duration; 4 - img; 5 - views; 6 - votes; 7 - added
-        var pattern = /<a href="\/view_video\.php\?viewkey=(\d*?)" title="([\s\S]*?)"[\s\S]*?"duration">([\s\S]*?)<\/[\s\S]*?data-mediumthumb="([\s\S]*?)"[\s\S]*?<[\s\S]*?"views"><var>([\s\S]*?)<\/var>[\s\S]*?rating-container[\s\S]*?(\d+)%[\s\S]*?<[\s\S]*?"added">([\s\S]*?)<\/[\s\S]*?>/igm;
+        var pattern = /<a href="\/view_video\.php\?viewkey=([a-z0-9]*?)" title="([\s\S]*?)"[\s\S]*?"duration">([\s\S]*?)<\/[\s\S]*?data-mediumthumb="([\s\S]*?)"[\s\S]*?<[\s\S]*?"views"><var>([\s\S]*?)<\/var>[\s\S]*?rating-container[\s\S]*?(\d+)%[\s\S]*?<[\s\S]*?"added">([\s\S]*?)<\/[\s\S]*?>/igm;
         
         var pagePattern = /"page_next"[\s\S]+?\/video[\s\S]*?page=(\d*)/igm;
         
@@ -200,7 +220,7 @@
     });
     
     plugin.addURI(PREFIX + ":categories", function(page, c) {
-    	setPageHeader(page, plugin.getDescriptor().synopsis);
+    	setPageHeader(page, "Categories");
     	page.type = "directory";
         page.contents = "movies";
     	
@@ -219,7 +239,7 @@
     });
     
     plugin.addURI(PREFIX + ":categories:(.*)", function(page, c) {
-    	setPageHeader(page, plugin.getDescriptor().synopsis);
+    	setPageHeader(page, "Category listing");
     	page.type = "directory";
         page.contents = "movies";
 
@@ -237,7 +257,7 @@
     });
 
     plugin.addURI(PREFIX + ":categories:(.*):(.*)", function(page, c, p) {
-    	setPageHeader(page, plugin.getDescriptor().synopsis);
+    	setPageHeader(page, "Category listing, "+p);
     	page.type = "directory";
         page.contents = "movies";
 
@@ -247,47 +267,132 @@
     
     plugin.addURI(PREFIX + ":movie:(.*)", function(page, id) {
     	page.loading = true;
-    	page.type = "directory";
-        page.contents = "movies";
+    	setPageHeader(page, "Searching...");
         
         d(MOVIE_PAGE_URL + id);
         var c = showtime.httpReq(MOVIE_PAGE_URL + id);
         
-        // 1 - type, 2 - description, 3 - title, 4 - imageurl, 5 - duration, 6 - negative-rating
-        var pattern = /var flashvars.*? = (\{[\s\S]+?\});/igm;
         var flashvars;
-        if ((match = pattern.exec(c)) !== null) {
-        	
-        	flashvars = JSON.parse(match[1]);
-        	d(flashvars);
-        	
-        	page.metadata.title = flashvars.video_title;
-        	page.metadata.background = flashvars.image_url;
-        	page.metadata.backgroundAlpha = 0.3;
+
+        if (service.quality == 'letMeChoose') {
+            page.type = "directory";
+            page.contents = "movies";
         }
         
-        page.appendItem("", "separator", {
-            	title: "Quality"
-        });
+	    // 1 - type, 2 - description, 3 - title, 4 - imageurl, 5 - duration, 6 - negative-rating
+	    var pattern = /var flashvars.*? = (\{[\s\S]+?\});/igm;
+	    if ((match = pattern.exec(c)) !== null) {
+	        	
+            flashvars = JSON.parse(match[1]);
+            //d(flashvars);
+	        	
+            setPageHeader(page, flashvars.video_title, flashvars.image_url);
+	    }
+	        
+        if (service.quality == 'letMeChoose') {
+            page.appendItem("", "separator", {
+                  	title: "Quality"
+            });
+        }
+        
+
         
         // 1 - quality, 2 - link
-        var pattern = /var player_quality_([\s\S]*?) = '([\s\S]*?)';/igm;
+        var pattern = /var player_quality_([\s\S]*?)p = '([\s\S]*?)';/igm;
         var addedQuality = false;
+        var bestMatch;
+        var metadata = {};
+        metadata.title = flashvars.video_title;
+        metadata.canonicalUrl = PREFIX + ":movie:" + id;
+        metadata.no_fs_scan = true;
+        
         while ((match = pattern.exec(c)) !== null) {
-        	d(match);
-        	page.appendItem(match[2], 'video', {
-						title : new showtime.RichText(match[1]),
-						icon : flashvars.image_url,
-						duration: flashvars.video_duration,
-						description : new showtime.RichText(flashvars.video_title)
-					});
-			addedQuality = true;
-        }
+        	//d(match);
+            addedQuality = true;
+            
+            if (service.quality == 'letMeChoose') {
                 
+                metadata.sources = [{ url: match[2], bitrate: match[1] }];
+                //d(metadata);
+                
+                page.appendItem("videoparams:"+showtime.JSONEncode(metadata), 'video', {
+                            title : new showtime.RichText(match[1]),
+                            icon : flashvars.image_url,
+                            duration: flashvars.video_duration,
+                            description : new showtime.RichText(flashvars.video_title)
+                        });
+                
+            } else {
+                
+            	var desiredQuality = parseInt(service.quality);
+                var quality = parseInt(match[1]);
+            	
+            	if (desiredQuality == quality) {	//find desired quality
+                    metadata.sources = [{ url: match[2], bitrate: match[1] }];
+                    //d(metadata);
+                    page.loading = false;
+                    page.source = "videoparams:"+showtime.JSONEncode(metadata);
+                    page.type = "video";
+            	}
+            	
+            	// init
+            	if (bestMatch == null) {
+            		bestMatch = match;
+            		continue;
+            	}
+            	
+	        	//find closest quality from bottom (bottom first)
+		        if (quality > bestMatch[1] && quality < desiredQuality) {
+					bestMatch = match;
+					//d(bestMatch);
+					continue;
+				}
+				
+		        //find closest quality from top
+		        if (quality < bestMatch[1] && quality > desiredQuality) {
+					bestMatch = match;
+					//d(bestMatch);
+					continue;
+				}
+                
+            }
+        }
+        
         page.loading = false;
+        
+        
+        if (service.quality != 'letMeChoose') {
+        	
+        	d(bestMatch);
+        	
+   	        //if there are no quality versions, show a default one
+	        if (!addedQuality) {
+				page.error("Selected video has no quality versions...");
+				return;
+	        } else {
+	        	if (bestMatch == null) {
+			       	page.error("Selected video is not available on this platform.");
+					return;
+			    } else {
+                    
+                    metadata.sources = [{ url: bestMatch[2], bitrate: bestMatch[1] }];
+                    //d(metadata);
+                    
+                    page.loading = false;
+                    page.source = "videoparams:"+showtime.JSONEncode(metadata);
+                    page.type = "video";
+                    
+			    }
+	        }
+        } else {
+	        page.error("Selected video has no quality versions...");
+	        return;
+        }
+        
+        
     });
     
-	plugin.addSearcher(plugin.getDescriptor().id, logo, function(page, search) {
+	plugin.addSearcher(plugin.getDescriptor().id, LOGO, function(page, search) {
         browseItems(page, DEFAULT_SEARCH_URL + search.replace(" ", "+"));
     });
 
