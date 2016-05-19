@@ -24,7 +24,7 @@
     var LOGO = plugin.path + "logo.png";
     var BACKGROUND = plugin.path + "views/img/background.jpg";
     
-    var DEFAULT_URL = 'http://www.pornhub.com/video';
+    var DEFAULT_URL = 'http://www.pornhub.com';
     var DEFAULT_CATEGORY_URL = 'http://www.pornhub.com/categories';
     var DEFAULT_SEARCH_URL = 'http://www.pornhub.com/video/search?search=';
     var MOVIE_PAGE_URL = 'http://www.pornhub.com/view_video.php?viewkey=';
@@ -94,17 +94,22 @@
 		print(JSON.stringify(c, null, 4));
 	}
 	
-	function resolveUrl(pageNumber, searchUrl) {
+	function resolveUrl(pageNumber, specificUrl) {
 		
-		var url = DEFAULT_URL + '?';
-    	if (searchUrl) {
-    		url = searchUrl;
+		var url = DEFAULT_URL + '/video';
+    	if (specificUrl) {
+    		url = specificUrl;
     	}
     	
    		if (service.sorting != 0) {
-   			if (url.charAt(url.length-1) != '?') {
-   				url += '&';
-   			}
+   		
+   			var delim = '?';
+			if(url.indexOf('?') > -1) {
+				delim = '&';
+			}
+			url += delim;
+   		
+   		
    			url += service.sorting;
    		
        		if (service.sorting == 'o=mv' || service.sorting == 'o=tr') {
@@ -128,7 +133,7 @@
 		
 	}
 	
-    function browseItems(page, searchUrl) {
+    function browseItems(page, specificUrl) {
 		var morePages = true;    	
         var pageNumber = 1;
         page.entries = 0;
@@ -148,7 +153,7 @@
         	
         	page.loading = true;
         	
-        	var url = resolveUrl(pageNumber, searchUrl);
+        	var url = resolveUrl(pageNumber, specificUrl);
 
         	d(url);
 	        var c = showtime.httpReq(url);
@@ -226,7 +231,7 @@
     	
     	page.loading = true;
     	// 1 - categoryId; 2 - title
-    	var pattern = /\/video\?c=(\w+?)">([A-Za-z]*?)<\/a/igm;
+    	var pattern = /<a class="sidebarIndent" href="(.+?)">([\S\s]*?)</igm;
     	var c = showtime.httpReq(DEFAULT_CATEGORY_URL);
     	while ((match = pattern.exec(c)) !== null) {
     		//d(match);
@@ -252,7 +257,7 @@
         page.appendItem("", "separator", {
             title: 'All'
         });
-   		browseItems(page, DEFAULT_URL + '?c=' + c);
+   		browseItems(page, DEFAULT_URL + c);
     	
     });
 
@@ -261,7 +266,12 @@
     	page.type = "directory";
         page.contents = "movies";
 
-   		browseItems(page, DEFAULT_URL + '?c=' + c + '&p=' + p);
+		var delim = '?';
+		if(c.indexOf('?') > -1) {
+			delim = '&';
+		}
+
+   		browseItems(page, DEFAULT_URL + c + delim + 'p=' + p);
     	
     });
     
