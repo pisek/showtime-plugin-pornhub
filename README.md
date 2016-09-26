@@ -1,5 +1,5 @@
 # showtime-plugin-pornhub
 
-Pornhub - Free porn sex videos & pussy movies. Porn hub is the ultimate xxx porn,sex and pussy tube, download sex videos or stream free xxx and free sex movies.
+Pornhub plugin written for Movian (old Showtime) application
 
-For additional info, visit http://www.pornhub.com
+For additional info, visit https://movian.tv and http://www.pornhub.com
